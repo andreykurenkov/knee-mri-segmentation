@@ -6,7 +6,8 @@ import numpy as np
 import os
 
 x_tr, y_tr, x_va, y_va, x_te, y_te = get_data()
-model = build_unet(x_tr.shape[1:])
+#model = build_unet(x_tr.shape[1:])
+model = build_simple_net(x_tr.shape[1:])
 model.load_weights("weights/segment.h5")
 
 datagen = ImageDataGenerator(featurewise_center=True,
