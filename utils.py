@@ -95,7 +95,7 @@ def load_data(path, size=(224,224), norm=False):
     y = np.array(y)
     return x, y
 
-def get_data(size=(576,576)):
+def get_data(size=(224,224)):
     if os.path.isfile('data.p'):
         data = np.load('data.p')
     else:
@@ -141,6 +141,24 @@ def UNet(img_shape, out_ch=1, start_ch=32, depth=4, inc_rate=1., activation='elu
 
 def build_unet(in_shape):
     return UNet(in_shape, 1, 32, 3, 1, 'elu', upconv=False, batchnorm=False)
+
+def build_simple_net(img_shape, depth=4, activation='elu'):
+    inp = Input(shape=img_shape)
+    out = inp
+    for i in range(depth):
+        last = i==depth-1
+        out = Conv2D(1 if last else 16, 7, strides=(1, 1), 
+                padding='same', 
+                data_format=None, 
+                activation='sigmoid' if last else 'relu', 
+                use_bias=True, 
+                kernel_initializer='glorot_uniform', 
+                bias_initializer='zeros', 
+                kernel_regularizer=None, 
+                bias_regularizer=None, 
+                activity_regularizer=None)(out)
+    return Model(inputs=inp, outputs=out)
+
 # Loss Functions
 
 # 2TP / (2TP + FP + FN)

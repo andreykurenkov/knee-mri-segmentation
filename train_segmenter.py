@@ -4,10 +4,11 @@ from keras.preprocessing.image import ImageDataGenerator
 import numpy as np
 import os
 
-
-x_tr, y_tr, x_va, y_va, x_te, y_te = get_data()
+batch_size = 4
+x_tr, y_tr, x_va, y_va, x_te, y_te = get_data((224,224))
 #show_samples(x_tr, y_tr, 3)
-model = build_unet(x_tr.shape[1:])
+#model = build_unet(x_tr.shape[1:])
+model = build_simple_net(x_tr.shape[1:])
 model.compile(optimizer=Adam(lr=0.0001), 
               metrics=['accuracy',iou],
               loss='binary_crossentropy')
@@ -29,8 +30,8 @@ datagen = ImageDataGenerator(featurewise_center=True,
     horizontal_flip=True,
     vertical_flip=True,)
 datagen.fit(x_tr)
-batches = datagen.flow(x_tr,y_tr,16)#,save_to_dir='fg_aug')
-batches_val = datagen.flow(x_va,y_va,16)#,save_to_dir='fg_aug')
+batches = datagen.flow(x_tr,y_tr,batch_size)#,save_to_dir='fg_aug')
+batches_val = datagen.flow(x_va,y_va,batch_size)#,save_to_dir='fg_aug')
 model.fit_generator(batches, 
           validation_data=batches_val, 
           epochs=50, callbacks=[mc, es, tb])
