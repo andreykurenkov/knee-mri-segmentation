@@ -6,7 +6,7 @@ import numpy as np
 import os
 
 x_tr, y_tr, x_va, y_va, x_te, y_te = get_data()
-model = UNet(x_tr.shape[1:], 1, 32, 2, 1, 'elu', upconv=False)
+model = build_unet(x_tr.shape[1:])
 model.load_weights("weights/segment.h5")
 
 datagen = ImageDataGenerator(featurewise_center=True,
@@ -22,7 +22,12 @@ aug_inp = next(batches)
 out = model.predict(aug_inp[0])
 for i in range(show_num):
     show_triple(train_inps[i],out[i],train_outs[i])
+    show_triple(train_inps[i],out[i]>0.5,train_outs[i])
 
-#batches = datagen.flow(x_te,y_te,8)#,save_to_dir='fg_aug')
-#model.evaluate_generator(batches)
-#test_inps = np.random.choose(x_tr,3)
+batches = datagen.flow(x_te,y_te,8)#,save_to_dir='fg_aug')
+model.compile(optimizer=Adam(lr=0.0001), 
+              loss='binary_crossentropy',
+              metrics=['accuracy',iou])
+scores = model.evaluate_generator(batches)
+for i in range(len(model.metrics_names)):
+    print('Test %s: %f'%(model.metrics_names[i],scores[i]))

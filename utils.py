@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from resizeimage import resizeimage
 import pickle
+import tensorflow as tf
 # img helper functions
 
 def print_info(x):
@@ -54,7 +55,7 @@ def shuffle(x, y):
 
 def split(x, y, tr_size=0.8, va_size=0.1):
     tr_size = int(len(x) * tr_size)
-    va_size = int(len(x) * tr_size)
+    va_size = int(len(x) * va_size)
     va_start = tr_size + va_size
     x_tr = x[:tr_size]
     y_tr = y[:tr_size]
@@ -77,22 +78,24 @@ def read_image(path, size=None, norm=False, grey=False):
     img = (img - img.mean()) / img.std() if norm else img
     return img
 
-def load_data(path, size=(24,224,224), norm=False):
+def load_data(path, size=(224,224), norm=False):
     train_files = [x for x in os.listdir(path) if 'img' in x]
     x, y = [], []
     for i in tqdm(range(len(train_files))):
         x_path = os.path.join(path,train_files[i])
-        img = read_image(x_path, size=size, norm=norm)
-        x.append(img)
+        in_img = read_image(x_path, size=size, norm=norm)
         y_path = x_path.replace('img','mask')
-        img = read_image(y_path, size=size, norm=norm, grey=True)>0.5
-        img = img.astype(int)
-        y.append(img)
+        out_img = read_image(y_path, size=size, norm=norm, grey=True)>0.5
+        out_img = out_img.astype(int)
+        if np.sum(out_img)<5:
+            continue
+        x.append(in_img)
+        y.append(out_img)
     x = np.array(x)
     y = np.array(y)
     return x, y
 
-def get_data(size=(224,224)):
+def get_data(size=(525,525)):
     if os.path.isfile('data.p'):
         data = np.load('data.p')
     else:
@@ -102,46 +105,16 @@ def get_data(size=(224,224)):
             pickle.dump(data,f)
     return data
 
-def print_weights(weight_file_path):
-    """
-    Prints out the structure of HDF5 file.
-
-    Args:
-      weight_file_path (str) : Path to the file to analyze
-    """
-    f = h5py.File(weight_file_path)
-    try:
-        if len(f.attrs.items()):
-            print("{} contains: ".format(weight_file_path))
-            print("Root attributes:")
-        for key, value in f.attrs.items():
-            print("  {}: {}".format(key, value))
-
-        if len(f.items())==0:
-            return 
-
-        for layer, g in f.items():
-            print("  {}".format(layer))
-            print("    Attributes:")
-            for key, value in g.attrs.items():
-                print("      {}: {}".format(key, value))
-
-            print("    Dataset:")
-            for p_name in g.keys():
-                param = g[p_name]
-                print("      {}: {}".format(p_name, param.shape)) #try only "param"
-    finally:
-        f.close()
-
 # Models
 
 def conv_block(m, dim, acti, bn, res, do=0):
-    n = Conv2D(dim, 3, activation=acti, padding='same')(m)
-    n = BatchNormalization()(n) if bn else n
-    n = Dropout(do)(n) if do else n
-    n = Conv2D(dim, 3, activation=acti, padding='same')(n)
-    n = BatchNormalization()(n) if bn else n
-    return Add()([m, n]) if res else n
+    with tf.name_scope('conv_block'):
+        n = Conv2D(dim, 3, activation=acti, padding='same')(m)
+        n = BatchNormalization()(n) if bn else n
+        n = Dropout(do)(n) if do else n
+        n = Conv2D(dim, 3, activation=acti, padding='same')(n)
+        n = BatchNormalization()(n) if bn else n
+        return Add()([m, n]) if res else n
 
 def level_block(m, dim, depth, inc, acti, do, bn, mp, up, res):
     if depth > 0:
@@ -166,6 +139,8 @@ def UNet(img_shape, out_ch=1, start_ch=32, depth=4, inc_rate=1., activation='elu
     o = Conv2D(out_ch, 1, activation='sigmoid')(o)
     return Model(inputs=i, outputs=o)
 
+def build_unet(in_shape):
+    return UNet(in_shape, 1, 32, 2, 1, 'elu', upconv=False, batchnorm=False)
 # Loss Functions
 
 # 2TP / (2TP + FP + FN)
@@ -192,8 +167,8 @@ def f2_loss(y_true, y_pred):
 
 dice = f1
 dice_loss = f1_loss
-
 def iou(y_true, y_pred):
+    y_pred = K.round(y_pred)
     y_true_f = K.flatten(y_true)
     y_pred_f = K.flatten(y_pred)
     intersection = K.sum(y_true_f * y_pred_f)
