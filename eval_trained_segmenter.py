@@ -13,6 +13,14 @@ datagen = ImageDataGenerator(featurewise_center=True,
     featurewise_std_normalization=True)
 datagen.fit(x_tr)
 
+batches = datagen.flow(x_te,y_te,8)#,save_to_dir='fg_aug')
+model.compile(optimizer=Adam(lr=0.0001), 
+              loss='binary_crossentropy',
+              metrics=['accuracy',iou])
+scores = model.evaluate_generator(batches)
+for i in range(len(model.metrics_names)):
+    print('Test %s: %f'%(model.metrics_names[i],scores[i]))
+
 show_num = 3
 idx = np.random.randint(0,x_tr.shape[0],show_num)
 train_inps = x_tr[idx]
@@ -23,11 +31,3 @@ out = model.predict(aug_inp[0])
 for i in range(show_num):
     show_triple(train_inps[i],out[i],train_outs[i])
     show_triple(train_inps[i],out[i]>0.5,train_outs[i])
-
-batches = datagen.flow(x_te,y_te,8)#,save_to_dir='fg_aug')
-model.compile(optimizer=Adam(lr=0.0001), 
-              loss='binary_crossentropy',
-              metrics=['accuracy',iou])
-scores = model.evaluate_generator(batches)
-for i in range(len(model.metrics_names)):
-    print('Test %s: %f'%(model.metrics_names[i],scores[i]))

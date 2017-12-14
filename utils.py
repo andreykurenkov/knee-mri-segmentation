@@ -24,13 +24,13 @@ def show_triple(inp, out, gt):
     plt.figure(figsize=(15, 5))
     plt.subplot(1,3,1)
     plt.axis('off')
-    plt.imshow(inp)
+    plt.imshow(inp.astype(float))
     plt.subplot(1,3,2)
     plt.axis('off')
-    plt.imshow(np.repeat(out,3,2))
+    plt.imshow(np.repeat(out,3,2).astype(float))
     plt.subplot(1,3,3)
     plt.axis('off')
-    plt.imshow(np.repeat(gt,3,2))
+    plt.imshow(np.repeat(gt,3,2).astype(float))
     plt.show()
 
 def show_samples(x, y, num):
@@ -95,7 +95,7 @@ def load_data(path, size=(224,224), norm=False):
     y = np.array(y)
     return x, y
 
-def get_data(size=(525,525)):
+def get_data(size=(576,576)):
     if os.path.isfile('data.p'):
         data = np.load('data.p')
     else:
@@ -140,7 +140,7 @@ def UNet(img_shape, out_ch=1, start_ch=32, depth=4, inc_rate=1., activation='elu
     return Model(inputs=i, outputs=o)
 
 def build_unet(in_shape):
-    return UNet(in_shape, 1, 32, 2, 1, 'elu', upconv=False, batchnorm=False)
+    return UNet(in_shape, 1, 32, 3, 1, 'elu', upconv=False, batchnorm=False)
 # Loss Functions
 
 # 2TP / (2TP + FP + FN)
