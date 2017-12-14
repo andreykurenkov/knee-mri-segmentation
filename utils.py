@@ -9,53 +9,29 @@ from keras.preprocessing.image import *
 from os.path import isfile
 from tqdm import tqdm
 import random
-from glob import glob
 import skimage.io as io
-import skimage.transform as tr
 import skimage.morphology as mo
-import SimpleITK as sitk
-from pushover import Client
 import matplotlib.pyplot as plt
+from PIL import Image
+from resizeimage import resizeimage
 
 # img helper functions
 
 def print_info(x):
     print(str(x.shape) + ' - Min: ' + str(x.min()) + ' - Mean: ' + str(x.mean()) + ' - Max: ' + str(x.max()))
-    
+
 def show_samples(x, y, num):
-    two_d = True if len(x.shape) == 4 else False
     rnd = np.random.permutation(len(x))
-    for i in range(0, num, 2):
+    for i in range(num):
         plt.figure(figsize=(15, 5))
-        for j in range(2):
-            plt.subplot(1,4,1+j*2)
-            img = x[rnd[i+j], ..., 0] if two_d else x[rnd[i], 8+8*j, ..., 0]
-            plt.axis('off')
-            plt.imshow(img.astype('float32'))
-            plt.subplot(1,4,2+j*2)
-            if y[rnd[i]].shape[-1] == 1:
-                img = y[rnd[i+j], ..., 0] if two_d else y[rnd[i], 8+8*j, ..., 0]
-            else:
-                img = y[rnd[i+j]] if two_d else y[rnd[i], 8+8*j]
-            plt.axis('off')
-            plt.imshow(img.astype('float32'))
-        plt.show()
-        
-def show_samples_2d(x, num, titles=None, axis_off=True, size=(20,20)):
-    assert(len(x) >= 1)
-    if titles:
-        assert(len(titles) == len(x))
-    rnd = np.random.permutation(len(x[0]))
-    for row in range(num):
-        plt.figure(figsize=size)
-        for col in range(len(x)):
-            plt.subplot(1,len(x), col+1)
-            img = x[col][rnd[row], ..., 0] if x[col][rnd[row]].shape[-1] == 1 else x[col][rnd[row]]
-            if axis_off:
-                plt.axis('off')
-            if titles:
-                plt.title(titles[col])
-            plt.imshow(img.astype('float32'), cmap='gray')
+        plt.subplot(1,2,1)
+        img = x[rnd[i]] 
+        plt.axis('off')
+        plt.imshow(img)
+        plt.subplot(1,2,2)
+        img = y[rnd[i]]
+        plt.axis('off')
+        plt.imshow(img)
         plt.show()
 
 def shuffle(x, y):
@@ -64,13 +40,17 @@ def shuffle(x, y):
     y = y[perm]
     return x, y
 
-def split(x, y, tr_size):
+def split(x, y, tr_size=0.8, va_size=0.1):
     tr_size = int(len(x) * tr_size)
+    va_size = int(len(x) * tr_size)
+    va_start = tr_size + va_size
     x_tr = x[:tr_size]
     y_tr = y[:tr_size]
-    x_te = x[tr_size:]
-    y_te = y[tr_size:]
-    return x_tr, y_tr, x_te, y_te
+    x_va = x[tr_size:va_start]
+    y_va = y[tr_size:va_start]
+    x_te = x[va_start:]
+    y_te = y[va_start:]
+    return x_tr, y_tr, x_va, y_va, x_te, y_te
 
 def augment(x, y, h_shift=[], v_flip=False, h_flip=False, rot90=False, edge_mode='minimum'):
     assert(len(x.shape) == 4)
@@ -122,12 +102,6 @@ def augment(x, y, h_shift=[], v_flip=False, h_flip=False, rot90=False, edge_mode
             y = np.concatenate((y, y))
     return x, y
 
-def resize_3d(img, size):
-    img2 = np.zeros((img.shape[0], size[0], size[1], img.shape[-1]))
-    for i in range(img.shape[0]):
-        img2[i] = tr.resize(img[i], (size[0], size[1]), mode='constant', preserve_range=True)
-    return img2
-
 def to_2d(x):
     assert len(x.shape) == 5 # Shape: (#, Z, Y, X, C)
     return np.reshape(x, (x.shape[0]*x.shape[1], x.shape[2], x.shape[3], x.shape[4]))
@@ -143,19 +117,6 @@ def get_crop_area(img, threshold=0):
     x_arr = np.where(img.sum(axis=0).sum(axis=0) > threshold)[0]
     x = (x_arr[0] + x_arr[-1]) // 2 - size // 2
     return y, x, size
-
-def n4_bias_correction(img):
-    img = sitk.GetImageFromArray(img[..., 0].astype('float32'))
-    mask = sitk.OtsuThreshold(img, 0, 1, 200)
-    img = sitk.N4BiasFieldCorrection(img, mask)
-    return sitk.GetArrayFromImage(img)[..., np.newaxis]
-
-def handle_specials(img):
-    if img.shape[0] == 26:
-        img = img[1:-1]
-    elif img.shape[0] == 20:
-        img = np.lib.pad(img, ((2,2), (0,0), (0,0), (0,0)), 'minimum')
-    return img
 
 def erode(imgs, amount=3):
     imgs = imgs.sum(axis=-1)
@@ -208,76 +169,29 @@ def shorten(y, factor):
 def normalize(x, mean, std):
     return (x - x.mean()) / x.std()
 
-def multilabel(img, channel):
-    if channel == 1:
-        img[img > 0.01] = 1
-        img[img < 0.01] = 0
-        return img
-    else:
-        step = img.max() // channel
-        divider = img.max() * 0.99
-        img2 = np.zeros((img.shape[0], img.shape[1], img.shape[2], channel))
-        for c in range(channel):
-            img2[img[..., 0] > divider, c] = 1
-            img[img[..., 0] > divider, 0] = 0
-            divider -= step
-        return img2
-
-def read_mhd(path, label=0, crop=None, size=None, bias=False, norm=False):
-    img = io.imread(path, plugin='simpleitk')[..., np.newaxis].astype('float64')
-    img = handle_specials(img)
-    img = multilabel(img, label) if label > 0 else img
-    img = img[:, crop[0]:crop[0]+crop[2], crop[1]:crop[1]+crop[2]] if crop else img
-    #img = img[:, crop[0]:-2*crop[1]+crop[0], crop[1]:-1*crop[1]] if crop else img
-    img = resize_3d(img, size) if size else img
-    img = n4_bias_correction(img) if bias else img
+def read_image(path, size=None, norm=False, grey=False):
+    fd_img = open(path, 'rb')
+    img = Image.open(fd_img)
+    if size is not None:
+        resized = resizeimage.resize_contain(img, size)
+        if not grey:
+            img = np.array(resized.convert("RGB"))
+        else:
+            img = np.array(resized.convert("L"))[...,np.newaxis]
+    fd_img.close()
     img = (img - img.mean()) / img.std() if norm else img
-    return img.astype('float32')
+    return img
 
-def load_data(path, label=0, size=(24,224,224), bias=False, norm=False, to2d=False):
-    files = glob(path)
+def load_data(path, size=(24,224,224), norm=False):
+    train_files = [x for x in os.listdir(path) if 'img' in x]
     x, y = [], []
-    for i in tqdm(range(len(files))):
-        img = read_mhd(files[i])
-        top, left, dim = get_crop_area(img)
-        img = read_mhd(files[i], label=label, crop=(top, left, dim), size=size)
-        if to2d:
-            for layer in img:
-                y.append(layer)
-        else:
-            y.append(img)
-        files[i] = files[i].replace('/VOI_LABEL/', '/MHD/', 1)
-        files[i] = files[i].replace('_LABEL.', '_ORIG.', 1)
-        img = read_mhd(files[i], crop=(top, left, dim), size=size, bias=bias, norm=norm)
-        if to2d:
-            for layer in img:
-                x.append(layer)
-        else:
-            x.append(img)
-    x = np.array(x)
-    y = np.array(y)
-    return x, y
-
-def load_data_age(files, size=None, crop=None, bias=False, norm=False, 
-                  to2d=False, smart_crop=False):
-    files = glob(files)
-    x, y = [], []
-    for i in tqdm(range(len(files))):
-        if crop:
-            if smart_crop:
-                img = read_mhd(files[i])
-                c = y_center(img)
-                crop[0] = c - crop[2] // 2
-        img = read_mhd(files[i], crop=crop, size=size, bias=bias, norm=norm)
-        f = files[i].split('_')
-        age = int(f[3]) + int(f[4]) / 12.
-        if to2d:
-            for layer in img:
-                x.append(layer)
-                y.append(age)
-        else:
-            x.append(img)
-            y.append(age)
+    for i in tqdm(range(len(train_files))):
+        x_path = os.path.join(path,train_files[i])
+        img = read_image(x_path, size=size, norm=norm)
+        x.append(img)
+        y_path = x_path.replace('img','mask')
+        img = read_image(y_path, size=size, norm=norm, grey=True)
+        y.append(img)
     x = np.array(x)
     y = np.array(y)
     return x, y
@@ -340,29 +254,10 @@ def level_block(m, dim, depth, inc, acti, do, bn, mp, up, res):
     return m
 
 def UNet(img_shape, out_ch=1, start_ch=32, depth=4, inc_rate=1., activation='elu', 
-         dropout=0.5, batchnorm=False, maxpool=True, upconv=True, residual=False):
+         dropout=0.5, batchnorm=False, maxpool=False, upconv=True, residual=False):
     i = Input(shape=img_shape)
     o = level_block(i, start_ch, depth, inc_rate, activation, dropout, batchnorm, maxpool, upconv, residual)
     o = Conv2D(out_ch, 1, activation='sigmoid')(o)
-    return Model(inputs=i, outputs=o)
-
-def level_block_3d(m, dim, depth, factor, acti, dropout):
-    if depth > 0:
-        n = Conv3D(dim, 3, activation=acti, padding='same')(m)
-        n = Dropout(dropout)(n) if dropout else n
-        n = Conv3D(dim, 3, activation=acti, padding='same')(n)
-        m = MaxPooling3D((1,2,2))(n)
-        m = level_block_3d(m, int(factor*dim), depth-1, factor, acti, dropout)
-        m = UpSampling3D((1,2,2))(m)
-        m = Conv3D(dim, 2, activation=acti, padding='same')(m)
-        m = Concatenate(axis=4)([n, m])
-    m = Conv3D(dim, 3, activation=acti, padding='same')(m)
-    return Conv3D(dim, 3, activation=acti, padding='same')(m)
-
-def UNet_3D(img_shape, n_out=1, dim=8, depth=3, factor=1.5, acti='elu', dropout=None):
-    i = Input(shape=img_shape)
-    o = level_block_3d(i, dim, depth, factor, acti, dropout)
-    o = Conv3D(n_out, 1, activation='sigmoid')(o)
     return Model(inputs=i, outputs=o)
 
 # Loss Functions
@@ -444,18 +339,3 @@ def error(y_true, y_pred):
 
 def error_np(y_true, y_pred):
     return (abs(y_true - y_pred)).sum() / float(len(y_true.flatten()))
-
-# Notifications
-    
-def pushover(title, message):
-    user = "u96ub3t5wu1nexmgi22xjs31jeb8y6"
-    api = "avfytsyktracxood45myebobtry6yd"
-    client = Client(user, api_token=api)
-    client.send_message(message, title=title)
-    
-#from nipype.interfaces.ants import N4BiasFieldCorrection
-#correct = N4BiasFieldCorrection()
-#correct.inputs.input_image = in_file
-#correct.inputs.output_image = out_file
-#done = correct.run()
-#img done.outputs.output_image
