@@ -13,11 +13,24 @@ import skimage.morphology as mo
 import matplotlib.pyplot as plt
 from PIL import Image
 from resizeimage import resizeimage
-
+import pickle
 # img helper functions
 
 def print_info(x):
     print(str(x.shape) + ' - Min: ' + str(x.min()) + ' - Mean: ' + str(x.mean()) + ' - Max: ' + str(x.max()))
+
+def show_triple(inp, out, gt):
+    plt.figure(figsize=(15, 5))
+    plt.subplot(1,3,1)
+    plt.axis('off')
+    plt.imshow(inp)
+    plt.subplot(1,3,2)
+    plt.axis('off')
+    plt.imshow(np.repeat(out,3,2))
+    plt.subplot(1,3,3)
+    plt.axis('off')
+    plt.imshow(np.repeat(gt,3,2))
+    plt.show()
 
 def show_samples(x, y, num):
     rnd = np.random.permutation(len(x))
@@ -73,10 +86,21 @@ def load_data(path, size=(24,224,224), norm=False):
         x.append(img)
         y_path = x_path.replace('img','mask')
         img = read_image(y_path, size=size, norm=norm, grey=True)>0.5
+        img = img.astype(int)
         y.append(img)
     x = np.array(x)
     y = np.array(y)
     return x, y
+
+def get_data(size=(224,224)):
+    if os.path.isfile('data.p'):
+        data = np.load('data.p')
+    else:
+        x, y = load_data('fg', size=size, norm=False)
+        data = split(x,y)
+        with open('data.p','wb') as f:
+            pickle.dump(data,f)
+    return data
 
 def print_weights(weight_file_path):
     """
