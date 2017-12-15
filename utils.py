@@ -22,15 +22,18 @@ def print_info(x):
 
 def show_triple(inp, out, gt):
     plt.figure(figsize=(15, 5))
-    plt.subplot(1,3,1)
-    plt.axis('off')
-    plt.imshow(inp.astype(float))
-    plt.subplot(1,3,2)
-    plt.axis('off')
-    plt.imshow(np.repeat(out,3,2).astype(float))
-    plt.subplot(1,3,3)
-    plt.axis('off')
-    plt.imshow(np.repeat(gt,3,2).astype(float))
+    ax1 = plt.subplot(1,3,1)
+    ax1.axis('off')
+    ax1.set_title('Input')
+    ax1.imshow(inp.astype(np.uint8),origin='lower')
+    ax2 = plt.subplot(1,3,2)
+    ax2.axis('off')
+    ax2.set_title('Output')
+    ax2.imshow(np.repeat(out*255,3,2).astype(np.uint8),origin='lower')
+    ax3 = plt.subplot(1,3,3)
+    ax3.axis('off')
+    ax3.set_title('Ground Truth')
+    ax3.imshow(np.repeat(gt*255,3,2).astype(np.uint8),origin='lower')
     plt.show()
 
 def show_samples(x, y, num):
@@ -40,11 +43,11 @@ def show_samples(x, y, num):
         plt.subplot(1,2,1)
         img = x[rnd[i]] 
         plt.axis('off')
-        plt.imshow(img)
+        plt.imshow(img.astype(np.uint8),origin='lower')
         plt.subplot(1,2,2)
         img = y[rnd[i]]
         plt.axis('off')
-        plt.imshow(np.repeat(img,3,2))
+        plt.imshow(np.repeat(img,3,2).astype(np.uint8),origin='lower')
         plt.show()
 
 def shuffle(x, y):

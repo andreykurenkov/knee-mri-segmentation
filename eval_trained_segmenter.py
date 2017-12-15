@@ -5,9 +5,9 @@ from keras.preprocessing.image import ImageDataGenerator
 import numpy as np
 import os
 
-x_tr, y_tr, x_va, y_va, x_te, y_te = get_data()
-#model = build_unet(x_tr.shape[1:])
-model = build_simple_net(x_tr.shape[1:])
+x_tr, y_tr, x_va, y_va, x_te, y_te = get_data((224,224))
+model = build_unet(x_tr.shape[1:])
+#model = build_simple_net(x_tr.shape[1:])
 model.load_weights("weights/segment.h5")
 
 datagen = ImageDataGenerator(featurewise_center=True,
@@ -31,4 +31,3 @@ aug_inp = next(batches)
 out = model.predict(aug_inp[0])
 for i in range(show_num):
     show_triple(train_inps[i],out[i],train_outs[i])
-    show_triple(train_inps[i],out[i]>0.5,train_outs[i])

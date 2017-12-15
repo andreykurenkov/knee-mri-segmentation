@@ -4,11 +4,11 @@ from keras.preprocessing.image import ImageDataGenerator
 import numpy as np
 import os
 
-batch_size = 4
+batch_size = 16
 x_tr, y_tr, x_va, y_va, x_te, y_te = get_data((224,224))
 #show_samples(x_tr, y_tr, 3)
-#model = build_unet(x_tr.shape[1:])
-model = build_simple_net(x_tr.shape[1:])
+model = build_unet(x_tr.shape[1:])
+#model = build_simple_net(x_tr.shape[1:])
 model.compile(optimizer=Adam(lr=0.0001), 
               metrics=['accuracy',iou],
               loss='binary_crossentropy')
